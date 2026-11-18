@@ -3343,12 +3343,29 @@ $("#openSettings").onclick=()=>{const opts=[];if(tts)["airy","buttery","glassy",
   <div class="row" style="margin-top:12px"><button class="pill solid" id="sClose">Listo</button><button class="pill ghost" id="sReset" style="color:var(--coral)">Borrar progreso</button></div>`,()=>{
     window.EXT&&EXT.bind&&EXT.bind();
     $("#sExport").onclick=async()=>{const txt=JSON.stringify(S);let ok=false;try{await navigator.clipboard.writeText(txt);ok=true;}catch(e){}
-      openSheet(`<h2 class="mid">Tu progreso</h2><p class="muted small" style="margin:8px 0">${ok?"Ya está copiado. ":""}Pegalo en «Pegar» de la otra versión de la app. También sirve como copia de seguridad (guardalo en Notas).</p><textarea class="field" rows="6" readonly style="width:100%;font-size:12px">${esc(txt)}</textarea><div class="row" style="margin-top:10px"><button class="pill solid" id="exCopy">Copiar</button><button class="pill" id="exX">Listo</button></div>`,()=>{
-        const ta=$("#sheet textarea");$("#exCopy").onclick=async()=>{ta.select();try{await navigator.clipboard.writeText(ta.value);toast("Copiado");}catch(e){try{document.execCommand("copy");toast("Copiado");}catch(_){toast("Mantené apretado el texto y copialo");}}};$("#exX").onclick=closeSheet;});};
-    $("#sImport").onclick=()=>openSheet(`<h2 class="mid">Pegar progreso</h2><p class="muted small" style="margin:8px 0">Pegá el texto que copiaste con «Copiar». Se suma a lo que ya tenés: no se pierde nada.</p><textarea class="field" rows="6" id="imTa" style="width:100%;font-size:12px" placeholder="{...}"></textarea><div class="row" style="margin-top:10px"><button class="pill solid" id="imGo">Importar</button><button class="pill" id="imX">Cancelar</button></div><p class="small" id="imMsg" style="margin-top:8px"></p>`,()=>{
-      $("#imX").onclick=closeSheet;$("#imGo").onclick=()=>{try{const o=JSON.parse($("#imTa").value.trim());if(!o||typeof o!=="object"||!o.cards)throw 0;
-        S=migrate(mergeState(S,o));for(const id in S.custom)DECK_BY[id]=Object.assign({id},S.custom[id]);FS=null;saveNow();closeSheet();renderAll();toast("¡Progreso importado!");confetti();}
-        catch(e){$("#imMsg").textContent="Ese texto no es un progreso válido. Copialo de nuevo completo.";$("#imMsg").style.color="var(--coral)";}};});
+      openSheet(`<h2 class="mid">Copiar mi progreso</h2>
+        <p class="small" style="margin:8px 0">${ok?"<b style='color:var(--green)'>Listo, ya está copiado.</b> ":""}Si al pegar no funciona: tocá el cuadro de abajo, mantené apretado → <b>Seleccionar todo</b> → <b>Copiar</b>.</p>
+        <textarea class="field" rows="5" readonly style="width:100%;font-size:11px" id="exTa">${esc(txt)}</textarea>
+        <p class="tiny muted" style="margin-top:6px">${txt.length.toLocaleString("es")} caracteres. También sirve como copia de seguridad: guardalo en Notas.</p>
+        <div class="row" style="margin-top:10px"><button class="pill solid" id="exCopy">Copiar de nuevo</button><button class="pill" id="exX">Listo</button></div>`,()=>{
+        const ta=$("#exTa");ta.onfocus=()=>{try{ta.setSelectionRange(0,ta.value.length);}catch(e){ta.select();}};
+        $("#exCopy").onclick=async()=>{try{await navigator.clipboard.writeText(ta.value);toast("Copiado");}catch(e){ta.focus();ta.select();try{document.execCommand("copy");toast("Copiado");}catch(_){toast("Mantené apretado el texto → Seleccionar todo → Copiar");}}};$("#exX").onclick=closeSheet;});};
+    const doImport=(raw,msg)=>{const t=String(raw||"").trim();
+      const fail=why=>{msg.innerHTML=why;msg.style.color="var(--coral)";toast("No se importó: mirá el mensaje");};
+      if(!t){fail("No hay nada pegado. Primero tocá «Copiar» en la otra versión.");return;}
+      let o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1));}catch(e){}
+      if(!o||typeof o!=="object"||!o.cards){fail(`Lo que pegaste (${t.length.toLocaleString("es")} caracteres) no es un progreso completo. Seguramente no se copió entero: en la otra versión tocá el cuadro → mantené apretado → <b>Seleccionar todo</b> → <b>Copiar</b>, y volvé a pegar.`);return;}
+      const before=Object.keys(S.cards).length;S=migrate(mergeState(S,o));S.said=Math.max(S.said||0,o.said||0);
+      for(const id in S.custom)DECK_BY[id]=Object.assign({id},S.custom[id]);FS=null;saveNow();closeSheet();renderAll();
+      const r=S.route||{};toast(`¡Progreso importado! ${Object.keys(S.cards).length} tarjetas${r.placed?` · semana ${(r.u||0)+1}, día ${Math.min(r.d||1,7)}`:""}`);confetti();};
+    $("#sImport").onclick=()=>openSheet(`<h2 class="mid">Pegar mi progreso</h2><p class="small muted" style="margin:8px 0">Se suma a lo que ya tenés: no se pierde nada.</p>
+      <p class="small" id="imMsg" style="margin:0 0 8px"></p>
+      <button class="go" id="imClip"><span>Pegar del portapapeles e importar</span><span class="play">${ICON_PLAY}</span></button>
+      <p class="tiny muted" style="margin:10px 0 6px">O pegalo a mano acá:</p><textarea class="field" rows="4" id="imTa" style="width:100%;font-size:11px" placeholder="{...}"></textarea>
+      <div class="row" style="margin-top:10px"><button class="pill solid" id="imGo">Importar lo pegado</button><button class="pill" id="imX">Cancelar</button></div>`,()=>{
+      const msg=$("#imMsg");$("#imX").onclick=closeSheet;
+      $("#imClip").onclick=async()=>{let t="";try{t=await navigator.clipboard.readText();}catch(e){msg.textContent="El teléfono no dejó leer el portapapeles: pegalo a mano en el cuadro de abajo.";msg.style.color="var(--coral)";return;}doImport(t,msg);};
+      $("#imGo").onclick=()=>{$("#imTa").blur();doImport($("#imTa").value,msg);};});
     $("#sVoice").onchange=e=>{S.voice=e.target.value;save();};$("#sTest").onclick=()=>speak("Ciao Lauti! Benvenuto a Varapodio. Come stai oggi?");
     $("#sRate").oninput=e=>{S.rate=+e.target.value;save();};$("#sAuto").onchange=e=>{S.autoplay=e.target.checked;save();};
     $("#sNew").onchange=e=>{S.newPerDay=+e.target.value;save();FS=null;};$("#sClose").onclick=()=>{closeSheet();renderAll();};
