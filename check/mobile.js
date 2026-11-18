@@ -27,7 +27,7 @@ const { chromium, devices } = require('playwright');
   const t = async (sel, wait = 120) => { await p.tap(sel); await p.waitForTimeout(wait); };
   const step = async (name, fn) => { try { await fn(); console.log('OK  ', name); } catch (e) { console.log('FAIL', name, '-', e.message.split('\n')[0]); errs.push(name); } };
 
-  await p.goto(url + '#home'); await p.waitForTimeout(900);
+  await p.goto(url + '#home'); await p.waitForTimeout(900); await p.evaluate(() => { S.aiMode = 'full'; save(); });
   await step('home renders', async () => { await p.waitForSelector('#lvlCard svg'); });
   await step('level sheet', async () => { await t('#lvlCard'); await t('#lvNo'); });
   await step('settings', async () => { await t('#openSettings'); await t('#sTest'); await t('#sClose'); });

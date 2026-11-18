@@ -319,6 +319,7 @@ body.chatting #wpop{bottom:calc(var(--kb,0px) + 110px + env(safe-area-inset-bott
   </div>
   <div id="mono" hidden></div>
   <div id="sprint" hidden></div>
+  <div class="col" id="guided" hidden></div>
 </section>
 
 <!-- ================= CARTE ================= -->
@@ -402,6 +403,8 @@ body.chatting #wpop{bottom:calc(var(--kb,0px) + 110px + env(safe-area-inset-bott
 /*__CONTENT__*/
 /*__CONTENT2__*/
 /*__CONTENT3__*/
+/*__CONTENT4__*/
+/*__DICT__*/
 
 LESSONS.forEach(l=>Object.assign(l,LESSON_X[l.id]||{}));
 /* ============================== HELPERS ============================== */
@@ -412,6 +415,7 @@ function hash(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("on"),2600);}
 const RM=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
 const COLORS=["green","salmon","lime","yellow","coral","stone"];
+const ICON_MIC=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>`;
 const ICON_PLAY=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>`;
 const ICON_SPK=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>`;
 const ICON_SLOW=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15 12h6"/></svg>`;
@@ -448,13 +452,16 @@ async function openWord(el){const w=el.dataset.w.replace(/['’]$/,"'");const ct
   const key=norm(w)+"|"+ctx;const loc=localDict()[norm(w)];
   const draw=(r,loading)=>{pop.innerHTML=`<div class="spread" style="align-items:flex-start"><div style="min-width:0"><div class="w">${esc(w)}</div>
     <div class="t">${loading?'<span class="loading" style="color:var(--ink)"><i></i><i></i><i></i></span>':esc(r.es||"—")}</div>${r&&r.base?`<div class="n">Forma base: <b>${esc(r.base)}</b>${r.base_es?` = ${esc(r.base_es)}`:""}</div>`:""}${r&&r.chunk_it?`<div class="n">Se guarda: <b>${esc(r.chunk_it)}</b> = ${esc(r.chunk_es||"")}</div>`:""}${r&&r.note?`<div class="n">${esc(r.note)}</div>`:""}</div>
-    <div class="row" style="flex-wrap:nowrap;gap:6px"><button class="round" data-a="say" aria-label="Escuchar">${ICON_SPK}</button>${r&&r.es?`<button class="round" data-a="save" aria-label="Guardar">${ICON_PLUS}</button>`:""}<button class="round" data-a="x" aria-label="Cerrar">✕</button></div></div>`;
+    <div class="row" style="flex-wrap:nowrap;gap:6px"><button class="round" data-a="say" aria-label="Escuchar">${ICON_SPK}</button>${r&&r.es&&!r.noSave?`<button class="round" data-a="save" aria-label="Guardar">${ICON_PLUS}</button>`:""}<button class="round" data-a="x" aria-label="Cerrar">✕</button></div></div>`;
     pop.querySelector('[data-a="say"]').onclick=()=>speak(r&&r.base?r.base:w.replace(/'$/,""));pop.querySelector('[data-a="x"]').onclick=closeWord;
     const sv=pop.querySelector('[data-a="save"]');sv&&(sv.onclick=()=>{/* save a matching pair: the natural chunk, or the dictionary form with ITS meaning, or the word as it appears */
       const pair=r.chunk_it&&r.chunk_es?[r.chunk_it,r.chunk_es]:r.base&&r.base_es?[r.base,r.base_es]:[w.replace(/'$/,""),r.es];
       saveWord(pair[0],pair[1],"tocadas",[r.base&&r.base_es?`${r.base} = ${r.base_es}`:"",r.note||""].filter(Boolean).join(" · "));sv.innerHTML=ICON_CHECK;sv.disabled=true;toast("Guardada en tus palabras");});};
   if(WCACHE[key]){draw(WCACHE[key]);return;}
-  if(!sample){draw({es:loc||"Traducción disponible dentro de Claude"});return;}
+  const dl=typeof dictLookup==="function"?dictLookup(w):null;
+  if(dl){const r={es:dl.es,base:dl.bad?"":dl.base,base_es:dl.bad?"":dl.base_es,note:dl.bad?"Esta forma está mal: aparece como opción incorrecta en un ejercicio.":""};
+    if(dl.bad){draw(Object.assign({},r,{noSave:1}));return;}WCACHE[key]=r;draw(r);return;}
+  if(!sample){draw({es:loc||"No está en el diccionario. Buscala en Parole (necesita IA)."});return;}
   draw(loc?{es:loc}:null,!loc);
   try{const r=await ai(`Italian word «${w}» as used in the sentence «${ctx}». For an Argentine Spanish speaker, reply only with JSON {"es": its meaning HERE in rioplatense Spanish (1-4 words, translating exactly this form), "base": dictionary form (infinitive for verbs, singular noun with article) if different from the word, else "", "base_es": the Spanish meaning of that dictionary form (e.g. "despertarse", "el apellido"), or "", "chunk_it": the shortest natural chunk from the sentence that contains the word and is worth memorising as a unit (2-6 words, e.g. "mi sveglio presto", "i documenti", "fare la spesa"), "chunk_es": its exact rioplatense translation, "note": max 10 words in Spanish about its grammar here (e.g. "verbo andare, yo"), or ""}`);
     if(!r||!r.es)throw{};WCACHE[key]=r;if(wsel===el)draw(r);}
@@ -938,10 +945,18 @@ Reply only with JSON {"praise_es": one warm sentence in rioplatense Spanish (vos
 $("#chatEnd").onclick=()=>{if(CH&&CH.said&&!CH.summary){CH.summary=1;endChat();}else closeChat();};
 $("#chatBack").onclick=closeChat;
 
-function renderParla(){if(CH||!$("#mono").hidden)return;if(SPR){showSprint();return;}$("#sprint").hidden=true;$("#parlaHome").hidden=false;const host=$("#parlaHome");const due=sceneDueList();
+let GV=null;
+function showGuided(){$("#parlaHome").hidden=true;$("#sprint").hidden=true;const box=$("#guided");box.hidden=false;
+  box.innerHTML=`<div class="row"><button class="round" id="gvBack" aria-label="Volver">‹</button><h1 class="mid" style="flex:1">${esc(GV.t)}</h1></div><div class="col" id="gvBody"></div>`;
+  $("#gvBack").onclick=()=>{GV=null;stopSpeak();box.hidden=true;box.innerHTML="";renderParla();};
+  runGuided($("#gvBody"),GV,{doneLabel:"Volver",onDone:()=>{GV=null;box.hidden=true;box.innerHTML="";renderParla();}});window.scrollTo(0,0);}
+function renderParla(){if(CH||!$("#mono").hidden)return;if(SPR){showSprint();return;}if(GV){showGuided();return;}$("#guided").hidden=true;$("#sprint").hidden=true;$("#parlaHome").hidden=false;const host=$("#parlaHome");const due=sceneDueList();
   const curT=TIERS.filter(tierUnlocked).pop();
   host.innerHTML=`<h1 class="big">Parla</h1>
-  <button class="blk c-green" id="sprintBtn"><div class="spread"><div class="t">Sprint de hoy</div><span class="meta">15 min</span></div><div class="s">Claude lo arma para vos: recordar → construir frases → hablar con objetivos → ronda rápida</div><div class="go"><span>Empezar sprint</span><span class="play">${ICON_PLAY}</span></div></button>
+  <button class="blk c-green" id="sprintBtn"><div class="spread"><div class="t">Sprint de hoy</div><span class="meta">15 min</span></div><div class="s">${aiFull()?"Claude lo arma para vos":"Armado con tu ruta"}: recordar → construir frases → hablar con objetivos → ronda rápida</div><div class="go"><span>Empezar sprint</span><span class="play">${ICON_PLAY}</span></div></button>
+  <div class="h2">Conversaciones guiadas</div><p class="small muted" style="margin-top:-6px">Sin IA: el otro te habla, respondés hablando o escribiendo, y ves cómo lo dice un nativo.</p>
+  <div class="col" style="gap:8px">${unlockedUnits().flatMap(U=>U.gconv).map(c=>{const sc=(S.guided||{})[c.id];return `<button class="lesson" data-gv="${c.id}"><span class="num c-${c.c}">${sc!=null?(sc>=70?"✓":sc+"%"):ICON_PLAY}</span><span><b>${esc(c.t)}</b><span class="s">${esc(c.who)} · ${c.reg==="lei"?"Lei":"tu"}</span></span></button>`;}).join("")}</div>
+  <div class="h2">Charla libre con Giulia (usa IA)</div>
   <p class="muted">Elegí una escena. Al completarla (6 intervenciones) suma a tu nivel y vuelve más adelante para repasarla. Con 4 escenas de un nivel se desbloquea el siguiente.</p>
   <div class="panel"><div class="setrow"><span>Correcciones</span><div class="seg" id="segFix">${[["now","Al momento"],["end","Sin interrupciones"]].map(([k,l])=>`<button data-f="${k}" aria-pressed="${S.fixMode===k}">${l}</button>`).join("")}</div></div>
    <div class="setrow"><span>Ensayo y escenas nuevas</span><div class="seg" id="segLevel">${TIERS.filter(tierUnlocked).map(l=>`<button data-l="${l}" aria-pressed="${S.level===l}">${l}</button>`).join("")}</div></div></div>
@@ -952,6 +967,7 @@ function renderParla(){if(CH||!$("#mono").hidden)return;if(SPR){showSprint();ret
     <div class="scen">${list.map((s,i)=>{const r=S.scenes[s.id];return `<button class="c-${s.c||TIER_COLORS[t]} ${un?"":"locked"}" data-s="${esc(s.id)}" ${un?"":"disabled aria-disabled=\"true\""} style="${un?`background:var(--${["green","salmon","lime","yellow","coral","stone"][(i+TIERS.indexOf(t))%6]})`:""}">${r&&r.done?`<span class="badge">✓ ${r.done}</span>`:s.gen?`<span class="badge">IA</span>`:""}<b>${esc(s.t)}</b><span>${esc(s.s)}</span></button>`;}).join("")}</div></div>`;}).join("")}
   <button class="blk c-stone" id="monoBtn"><div class="t">Hablar solo 3·2·1</div><div class="s">Un tema, tres rondas cada vez más cortas. Para soltarte.</div></button>`;
   $("#sprintBtn").onclick=startSprint;
+  $$("[data-gv]",host).forEach(b=>b.onclick=()=>{GV=ALL_CONVS().find(c=>c.id===b.dataset.gv);unlockAudio();showGuided();});
   $$("#segFix button").forEach(b=>b.onclick=()=>{S.fixMode=b.dataset.f;save();renderParla();});
   $$("#segLevel button").forEach(b=>b.onclick=()=>{S.level=b.dataset.l;save();renderParla();});
   $$("#parlaHome [data-s]").forEach(b=>b.onclick=()=>{unlockAudio();openChat(sceneById(b.dataset.s));});
@@ -971,7 +987,9 @@ function renderParla(){if(CH||!$("#mono").hidden)return;if(SPR){showSprint();ret
 /* ============================== MIND MAP (Parole) ==============================
    Visual, radial organisation of a theme + free recall: rebuild the map from memory. */
 let MAP=null;
-async function openMap(theme){if(!sample){toast("El mapa funciona cuando abrís la app dentro de Claude.");return;}
+async function openMap(theme,unitData){
+  if(unitData){MAP={theme,data:unitData,hide:false,shown:{}};if(location.hash!=="#parole")location.hash="#parole";else renderMap();return;}
+  if(!sample){const U=UNITS.find(U=>U.t===theme);if(U){openMap(U.t,unitMapData(U));return;}toast("Para un tema libre hace falta la IA. Elegí uno de los mapas de la ruta.");return;}
   MAP={theme,data:null,hide:false,shown:{}};if(location.hash!=="#parole")location.hash="#parole";renderMap();
   try{const r=await ai(`Build a vocabulary MIND MAP in Italian for an Argentine learner (level ${S.level}) living in Calabria. Theme: "${theme.slice(0,80)}".
 Reply only with JSON {"center_it": the theme in Italian (1-3 words, with article if noun), "center_es", "branches":[4-5 items {"it": sub-topic label in Italian (1-3 words), "es", "items":[3-4 items {"it": a short, very useful chunk or phrase HE would say (2-6 words), "es": rioplatense Spanish}]}]}`,{modelTier:"default"});
@@ -1044,7 +1062,8 @@ function renderPronUnit(box){const u=PRON[AT.u];const Q=AT.q;
   $$("[data-slow]",box).forEach(b=>b.onclick=()=>speak(b.dataset.slow.replace(/ · /g,", "),{rate:.6}));
   $$("[data-tw]",box).forEach(b=>b.onclick=()=>speak(u.tw,{rate:+b.dataset.tw}));stagger(box);}
 /* Emotional, absurd micro-story with the learner's own phrases (vivid + bizarre = memorable). */
-async function openStory(words,theme){if(!sample){toast("La historia funciona cuando abrís la app dentro de Claude.");return;}
+async function openStory(words,theme){
+  if(!aiFull()){const pick=nextLocalStory(theme);AT={kind:"story",words:pick.U.chunks.slice(0,8),theme:pick.U.t,data:pick.s,es:false,local:1};if(location.hash!=="#ascolta")location.hash="#ascolta";else renderTool();return;}
   if(!words||!words.length){const ids=[...learnIds(),...dueIds()].slice(0,8);words=ids.map(id=>DECK_BY[id]).filter(c=>c&&c.g!=="rule").map(c=>({it:c.it,es:c.es}));
     if(words.length<4)words=words.concat(DECK.filter(c=>!S.cards[c.id]).slice(0,6-words.length).map(c=>({it:c.it,es:c.es})));}
   AT={kind:"story",words,theme:theme||"",data:null,es:false};if(location.hash!=="#ascolta")location.hash="#ascolta";else renderTool();
@@ -1068,9 +1087,10 @@ function renderStory(box){const d=AT.data;const head=`<div class="row"><button c
       await speak(d.lines[i].it);if(shadow)await new Promise(r=>setTimeout(r,Math.max(1800,d.lines[i].it.length*90)));else await new Promise(r=>setTimeout(r,350));}
     if(AT===tok){AT.playing=0;btn.classList.remove("on");$$(".stl.on",box).forEach(x=>x.classList.remove("on"));}};
   $("#stPlay").onclick=e=>run(false,e.currentTarget);$("#stShadow").onclick=e=>run(true,e.currentTarget);
-  $("#stNew").onclick=()=>openStory(AT.words,AT.theme);stagger(box);}
+  $("#stNew").onclick=()=>openStory(AT.words,AT.local?null:AT.theme);stagger(box);}
 
 /*__PROGRAM__*/
+/*__OFFLINE__*/
 
 /* ============================== SPRINT (daily adaptive session) ==============================
    1 Recordar: anticipation (say it before hearing it) + graduated-interval recall inside the session
@@ -1097,7 +1117,11 @@ function showSprint(){$("#parlaHome").hidden=true;$("#mono").hidden=true;$("#cha
     <div class="panel small muted" id="spErr" hidden></div></div>`;bindExit();return;}
   [renderRecall,renderBuild,()=>{},renderSpeed,renderSprintEnd][Math.min(SPR.phase,4)]();bindExit();window.scrollTo(0,0);}
 function bindExit(){const x=$("#spExit");x&&(x.onclick=()=>openSheet(`<h2 class="mid">¿Salir del sprint?</h2><p class="muted" style="margin:10px 0">Lo que ya hiciste queda guardado.</p><div class="row"><button class="pill solid" id="spStay">Seguir</button><button class="pill" id="spLeave">Salir</button></div>`,()=>{$("#spStay").onclick=closeSheet;$("#spLeave").onclick=()=>{closeSheet();SPR=null;$("#sprint").hidden=true;$("#parlaHome").hidden=false;renderParla();};}));}
-async function startSprint(){if(SPR&&SPR.plan&&SPR.phase<4){if(location.hash!=="#parla")location.hash="#parla";else showSprint();return;}if(!sample){toast("El Sprint funciona cuando abrís la app dentro de Claude.");return;}unlockAudio();
+async function startSprint(){if(SPR&&SPR.plan&&SPR.phase<4){if(location.hash!=="#parla")location.hash="#parla";else showSprint();return;}unlockAudio();
+  if(!aiFull()){const r=localSprintPlan();const due=[...learnIds(),...dueIds()].slice(0,5).map(id=>DECK_BY[id]).filter(c=>c&&c.es&&c.g!=="rule");
+    SPR={phase:0,plan:r,used:{}};r.targets.forEach(t=>addCustom(t.it,t.es,"Sprint: "+r.theme_es,"conv"));
+    SPR.rq={q:[...due.map(c=>({it:c.it,es:c.es,id:c.id,due:1})),...r.targets.map(t=>({it:t.it,es:t.es,id:"u"+hash(t.it),nw:1}))],i:0,ok:0,n:0,seen:{}};
+    if(location.hash!=="#parla")location.hash="#parla";else showSprint();return;}
   SPR={phase:0,plan:null,used:{}};if(location.hash!=="#parla")location.hash="#parla";showSprint();
   const due=[...learnIds(),...dueIds()].slice(0,8).map(id=>DECK_BY[id]).filter(c=>c&&c.es&&c.g!=="rule");
   const passed=LESSONS.filter(l=>S.grammar[l.id]&&S.grammar[l.id].best>=.6).map(l=>l.t);
@@ -1155,7 +1179,11 @@ function renderBuild(){const B=SPR.plan.build;const box=$("#sprint");
      :`<button class="go" id="bShow"><span>Ya lo dije · ver</span><span class="play">${ICON_PLAY}</span></button>`}</div>`);
   $("#bShow")&&($("#bShow").onclick=()=>{SPR.br=1;renderBuild();speak(st.it);});
   $("#bGo")&&($("#bGo").onclick=()=>{SPR.br=0;SPR.bi++;renderBuild();});}
-function startTalk(){SPR.phase=2;const t=SPR.plan.talk;$("#sprint").hidden=true;
+function startTalk(){SPR.phase=2;const t=SPR.plan.talk;
+  if(SPR.plan.local){const box=$("#sprint");box.hidden=false;box.innerHTML=sprintShell(`<div id="spGc"></div>`);bindExit();
+    if(!SPR.plan.conv){SPR.phase=3;SPR.talk={said:0,fixes:[]};showSprint();return;}
+    runGuided($("#spGc"),SPR.plan.conv,{doneLabel:"Ronda rápida →",onDone:res=>{SPR.talk={said:res.said,fixes:[]};SPR.used=Object.fromEntries(SPR.plan.targets.map((_,i)=>[i,res.ok/res.n>=.6?1:0]).filter(x=>x[1]));SPR.phase=3;SPR.speed=null;save();showSprint();}});return;}
+  $("#sprint").hidden=true;
   const sc={id:"sprint",sprint:true,reg:t.reg==="lei"?"lei":"tu",t:SPR.plan.theme_es||"Sprint",tier:S.level,c:"green",role:t.role||"a friendly local person",me:t.me||SPR.plan.me_es||"",open:"You already opened the scene.",goal:t.goal_es,
     targets:SPR.plan.targets,opener:[t.open_it||"Ciao! Come va?",t.open_es||"",t.answer_it||"",t.answer_es||""]};
   openChat(sc);if(t.goal_es)setTimeout(()=>addSys((SPR.plan.me_es?"Sos: "+SPR.plan.me_es+". ":"")+"Tu misión: "+t.goal_es+" Usá las frases de abajo: se ponen en verde cuando las decís."),50);}
@@ -1221,9 +1249,11 @@ function renderParole(){if(MAP){renderMap();return;}$("#paroleMap").hidden=true;
   ${mine.length?`<div class="panel" id="myWords">${mine.slice(0,40).map(id=>{const c=DECK_BY[id];return `<div class="word"><div class="w"><b>${wz(c.it)}</b><span>${esc(c.es)}</span></div><button class="round" data-say="${esc(c.it)}" aria-label="Escuchar">${ICON_SPK}</button></div>`;}).join("")}</div>`:`<p class="small muted">Buscá una palabra arriba o abrí un tema y guardá las que quieras.</p>`}
   <div class="blk c-green"><div class="t">Mapa mental</div><div class="s">Claude arma un mapa de un tema con frases que vas a usar. Después lo reconstruís de memoria.</div>
     <form id="mmForm" class="search" style="margin-top:12px;background:rgba(0,0,0,.12)"><input type="text" placeholder="Tema: el médico, la casa, una fiesta…" aria-label="Tema del mapa" autocomplete="off" style="color:var(--ink)"><button class="round ink" aria-label="Crear mapa">${ICON_PLAY}</button></form></div>
+  <div class="h2">Mapas de la ruta</div><div class="chips" id="umaps">${unlockedUnits().map(U=>`<button class="pill" data-um="${U.id}">${esc(U.t)}</button>`).join("")}</div>
   <div class="h2">Temas</div>
   <div class="tgrid">${VOCAB.map((v,i)=>{const n=v.words.length+((S.vocabExtra[v.id]||[]).length);const saved=Object.values(S.words).filter(w=>w.theme===v.id).length;return `<button class="c-${v.c}" data-v="${i}">${esc(v.t)}<span>${saved}/${n} guardadas</span></button>`;}).join("")}</div>`;
   searchBox("¿Cómo se dice…? (español o italiano)",$("#pSearch"));
+  $$("[data-um]",host).forEach(b=>b.onclick=()=>{const U=UNITS.find(x=>x.id===b.dataset.um);openMap(U.t,unitMapData(U));});
   $("#mmForm").onsubmit=e=>{e.preventDefault();const q=e.currentTarget.querySelector("input").value.trim();if(q)openMap(q);};
   $$("[data-v]",host).forEach(b=>b.onclick=()=>{VT=+b.dataset.v;renderTheme();window.scrollTo(0,0);});
   $("#playAll")&&($("#playAll").onclick=async e=>{const b=e.currentTarget;if(b.dataset.on){b.dataset.on="";stopSpeak();return;}b.dataset.on="1";b.querySelector("span").textContent="Detener";
@@ -1368,8 +1398,8 @@ async function lessonCards(L,host){if(GL.cards){saveCarousel(host,GL.cards,{g:"l
 function renderQuizPane(){const host=$("#quizPane");const qa=quizAvg();const li=levelInfo();
   host.innerHTML=`<div class="panel"><div class="spread"><div><div class="cap">Promedio de tus últimos quizzes</div><div class="mid" id="qavg">${Math.round(qa*100)}%</div></div><span class="meta dk">${(S.quiz||[]).length} hechos</span></div></div>
   <button class="blk c-green" data-q="local"><div class="t">Quiz rápido</div><div class="s">10 preguntas con tus frases: traducir, escuchar, falsos amigos y gramática</div><div class="go"><span>Empezar</span><span class="play">${ICON_PLAY}</span></div></button>
-  <button class="blk c-salmon" data-q="ai" ${sample?"":"disabled"}><div class="t">Quiz con IA</div><div class="s">Claude arma 8 preguntas a tu medida, con lo que estás aprendiendo y tus errores</div><div class="go"><span>${sample?"Generar":"Disponible dentro de Claude"}</span><span class="play">${ICON_PLAY}</span></div></button>
-  <button class="blk c-lime" data-q="level" ${sample?"":"disabled"}><div class="t">Prueba de nivel</div><div class="s">12 preguntas de A1 a B2 para ubicarte en el MCER. Ahora: ${li.cur} ${li.pct}%</div><div class="go"><span>${sample?"Hacer la prueba":"Disponible dentro de Claude"}</span><span class="play">${ICON_PLAY}</span></div></button>`;
+  <button class="blk c-salmon" data-q="ai"><div class="t">Quiz de la ruta</div><div class="s">10 preguntas de gramática de todas las semanas que ya abriste</div><div class="go"><span>Empezar</span><span class="play">${ICON_PLAY}</span></div></button>
+  <button class="blk c-lime" data-q="level"><div class="t">Prueba de nivel</div><div class="s">Te ubica en la ruta de 12 semanas. Ahora: ${li.cur} ${li.pct}%</div><div class="go"><span>Hacer la prueba</span><span class="play">${ICON_PLAY}</span></div></button>`;
   $$("[data-q]",host).forEach(b=>b.onclick=()=>startQuiz(b.dataset.q));stagger(host);}
 function localQuiz(){const pool=allCards().filter(c=>S.cards[c.id]);const src=pool.length>=8?pool:DECK.slice(0,60);const Q=[];
   const other=(c,n)=>shuffle(src.filter(x=>x!==c&&x.g===c.g).concat(shuffle(src.filter(x=>x!==c)))).filter((x,i,a)=>a.indexOf(x)===i).slice(0,n);
@@ -1381,6 +1411,9 @@ function localQuiz(){const pool=allCards().filter(c=>S.cards[c.id]);const src=po
 async function startQuiz(kind){QZ={kind,k:0,right:0,ans:null,qs:null,wrong:[]};location.hash!=="#studio"&&(location.hash="#studio");
   $("#studioHome").hidden=true;$("#studioRun").hidden=false;
   if(kind==="local"){QZ.qs=localQuiz();renderQuiz();return;}
+  if(kind==="ai"&&!aiFull()){const pool=unlockedUnits().flatMap(U=>[...U.items,...U.extra]).filter(x=>x.k==="choice");
+    QZ.qs=shuffle(pool).slice(0,10).map(x=>{const d=document.createElement("div");d.innerHTML=x.prompt;return{q:d.textContent.replace(/\s+/g," ").trim(),o:x.opts,a:x.a,why:x.why,save:x.full?{it:x.full,es:x.why||""}:null};});renderQuiz();return;}
+  if(kind==="level"&&!aiFull()){startSession(0,1,"p");return;}
   if(kind==="ff"){QZ.qs=shuffle(FALSI).slice(0,8).map(f=>{const trap=(f[2].match(/^(.+?) =/)||[])[1];const w=shuffle(FALSI.filter(x=>x!==f)).slice(0,2).map(x=>x[1]);const o=shuffle([f[1],trap||w[0],w[1]]);return{q:`«${f[0]}» significa…`,o,a:o.indexOf(f[1]),save:{it:f[0],es:f[1]}};});renderQuiz();return;}
   $("#studioRun").innerHTML=`<div class="row"><button class="round" id="qzBack" aria-label="Volver">‹</button><h1 class="mid">${kind==="level"?"Prueba de nivel":"Quiz con IA"}</h1></div><div class="panel">${LOADING}</div>`;
   $("#qzBack").onclick=()=>{QZ=null;renderStudio();};
@@ -1459,6 +1492,8 @@ $("#openSettings").onclick=()=>{const opts=[];if(tts)["airy","buttery","glassy",
   <div class="setrow"><label for="sAuto">Leer en voz alta automáticamente</label><input type="checkbox" id="sAuto" ${S.autoplay?"checked":""} style="width:22px;height:22px;accent-color:var(--yellow)"></div>
   <div class="setrow"><label for="sNew">Frases nuevas por día</label><select id="sNew">${[10,15,20,30,40].map(n=>`<option ${S.newPerDay===n?"selected":""}>${n}</option>`).join("")}</select></div>
   ${window.EXT&&EXT.settingsHTML?EXT.settingsHTML():""}
+  <div class="setrow" style="flex-direction:column;align-items:stretch;gap:6px"><label for="sAiMode">Uso de la IA</label><select id="sAiMode"><option value="search" ${S.aiMode!=="full"?"selected":""}>Solo para buscar (ahorra cupo)</option><option value="full" ${S.aiMode==="full"?"selected":""}>Para todo: sprints, historias y ejercicios nuevos</option></select>
+    <span class="tiny muted">La charla libre con Giulia siempre la elegís vos. Sin IA, todo funciona con el contenido incluido.</span></div>
   <div class="setrow"><span>Pasar o guardar mi progreso</span><button class="pill" id="sExport">Copiar</button><button class="pill ghost" id="sImport">Pegar</button></div>
   <div class="setrow"><span class="small muted">${Object.keys(S.cards).length} frases vistas · ${Object.keys(S.custom).length} propias · ${storeMode==="db"?"guardado en tu cuenta":"guardado en este dispositivo"}</span></div>
   <div class="row" style="margin-top:12px"><button class="pill solid" id="sClose">Listo</button><button class="pill ghost" id="sReset" style="color:var(--coral)">Borrar progreso</button></div>`,()=>{
@@ -1487,6 +1522,7 @@ $("#openSettings").onclick=()=>{const opts=[];if(tts)["airy","buttery","glassy",
       const msg=$("#imMsg");$("#imX").onclick=closeSheet;
       $("#imClip").onclick=async()=>{let t="";try{t=await navigator.clipboard.readText();}catch(e){msg.textContent="El teléfono no dejó leer el portapapeles: pegalo a mano en el cuadro de abajo.";msg.style.color="var(--coral)";return;}doImport(t,msg);};
       $("#imGo").onclick=()=>{$("#imTa").blur();doImport($("#imTa").value,msg);};});
+    $("#sAiMode").onchange=e=>{S.aiMode=e.target.value;save();};
     $("#sVoice").onchange=e=>{S.voice=e.target.value;save();};$("#sTest").onclick=()=>speak("Ciao Lauti! Benvenuto a Varapodio. Come stai oggi?");
     $("#sRate").oninput=e=>{S.rate=+e.target.value;save();};$("#sAuto").onchange=e=>{S.autoplay=e.target.checked;save();};
     $("#sNew").onchange=e=>{S.newPerDay=+e.target.value;save();FS=null;};$("#sClose").onclick=()=>{closeSheet();renderAll();};

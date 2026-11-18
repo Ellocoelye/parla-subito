@@ -34,7 +34,9 @@ function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let 
   for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c;}return p[n];}
 function checkTyped(v,answers){const a=nrm(v);let best=99,ans=answers[0];for(const x of answers){const d=lev(a,nrm(x));if(d<best){best=d;ans=x;}}
   if(best===0)return{ok:true,exact:true,ans};if(best<=Math.max(1,Math.floor(nrm(ans).length/12)))return{ok:true,exact:false,ans};return{ok:false,ans};}
-function gramItems(U,d){const it=U.items;if(d===1)return it.slice(0,7);if(d===2)return it.slice(6);return shuffle(it).slice(0,8);}
+function gramItems(U,d){const it=U.items,ex=U.extra||[];if(d===1)return it.slice(0,7);if(d===2)return it.slice(6);
+  /* days 3-6: fresh items from the bank (rotating by day) + a few from the core set */
+  const k=Math.ceil(ex.length/4),part=ex.slice((d-3)*k,(d-2)*k);return shuffle([...part,...shuffle(it).slice(0,4)]).slice(0,9);}
 function orderItem(c){return{k:"order",es:c.es,it:c.it};}
 function speakItem(c){return{k:"speak",es:c.es,it:c.it};}
 function clozeItem(c,pool){const words=plain(c.it).split(" ");const cand=words.map((w,i)=>[w,i]).filter(([w])=>w.replace(/'/g,"").length>=4);if(!cand.length)return speakItem(c);
@@ -50,7 +52,7 @@ function prodItems(known){const k=shuffle(known);const ord=k.filter(c=>{const n=
   return shuffle([...ord.slice(0,2).map(orderItem),...k.slice(0,2).map(speakItem),...k.slice(2,4).map(c=>clozeItem(c,known))]);}
 function recallItems(list,known){const it=list.map(speakItem);if(known.length>=4)it.push({k:"match",pairs:shuffle(known).slice(0,4)});return it;}
 function earItems(known){const short=[...known].sort((a,b)=>a.it.length-b.it.length).slice(0,8);return [...shuffle(short).slice(0,2).map(dictItem),...shuffle(known).slice(0,3).map(c=>meaningItem(c,known))];}
-function examItems(U){const k=U.chunks;return [...shuffle(U.items).slice(0,8),...shuffle(k).slice(0,4).map(c=>toItItem(c,k)),...shuffle(k).slice(0,3).map(c=>meaningItem(c,k))];}
+function examItems(U){const k=U.chunks;return [...shuffle([...U.items,...(U.extra||[])]).slice(0,8),...shuffle(k).slice(0,4).map(c=>toItItem(c,k)),...shuffle(k).slice(0,3).map(c=>meaningItem(c,k))];}
 async function aiExtras(U){if(!sample)return[];const errs=Object.entries((S.mem||{}).errs||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(e=>e[0]);
   try{const r=await ai(`Create 5 NEW Italian grammar exercises for an Argentine (rioplatense Spanish) learner. Grammar of the unit: "${U.g}". Context: "${U.sit}" in Calabria. Level ${levelForUnit(UNITS.indexOf(U))}.${errs.length?` He often fails: ${errs.join(", ")}.`:""}
 Types: "g" = short sentence containing ___ plus 3 options where exactly ONE is correct; "e" = a short sentence with ONE typical Spanish-speaker mistake plus 3 candidate corrections where exactly ONE is correct.
@@ -71,7 +73,7 @@ function buildSession(u,d,s){const U=UNITS[u];const newCh=d<=5?U.chunks.slice((d
   if(s==="m"){steps.push({k:"review",t:"Repaso",min:5});
     if(newCh.length)steps.push({k:"new",t:"Frases nuevas",min:4,chunks:newCh});
     steps.push({k:"rule",t:d===1?"La regla":"Recordá la regla",min:d===1?5:3,full:d===1});
-    steps.push({k:"ex",t:"Gramática",min:6,items:gramItems(U,d),ai:d>=3,tag:U.tag});
+    steps.push({k:"ex",t:"Gramática",min:6,items:gramItems(U,d),ai:d>=3&&aiFull(),tag:U.tag});
     steps.push({k:"ex",t:"Producción",min:5,items:prodItems(known)});
     steps.push({k:"dlg",t:"Diálogo",min:4,mode:d%2?"shadow":"role"});}
   else if(s==="n"){const today4=newCh.length?newCh:shuffle(known).slice(0,4);
@@ -229,6 +231,12 @@ function stDlg(host,st){const U=UNITS[LZ.u];let showEs=false,playing=false;const
   draw();}
 /* step: conversation with targets (reuses Giulia's chat) */
 function stTalk(host,st){const U=UNITS[LZ.u];
+  if(LZ.talkMode==="guided"&&!LZ.talkDone){const conv=U.gconv[(LZ.d+1)%U.gconv.length];host.innerHTML="";const d=document.createElement("div");host.appendChild(d);
+    runGuided(d,conv,{doneLabel:"Seguir con la lección",onDone:res=>{LZ.talkDone={said:res.said,used:res.ok};nextStep({ok:res.ok,n:res.n});}});return;}
+  if(!LZ.talkDone&&!LZ.talkMode){host.innerHTML=`<div class="blk c-${U.c}"><div class="t">Conversación</div><div class="s">${esc(U.sit)}. Elegí cómo practicar:</div></div>
+      <button class="lesson" id="tmG"><span class="num c-green">${ICON_PLAY}</span><span><b>Conversación guiada</b><span class="s">Sin IA · respondés y ves cómo lo dice un nativo</span></span></button>
+      ${sample?`<button class="lesson" id="tmF"><span class="num c-salmon">${ICON_PLAY}</span><span><b>Charla libre con Giulia</b><span class="s">Con IA · te entiende y te corrige todo (usa cupo)</span></span></button>`:""}`;
+    $("#tmG").onclick=()=>{LZ.talkMode="guided";stTalk(host,st);};$("#tmF")&&($("#tmF").onclick=()=>{LZ.talkMode="free";stTalk(host,st);});return;}
   if(!sample){host.innerHTML=`<div class="panel small muted">La conversación con Claude funciona cuando abrís la app dentro de Claude. Por ahora hacé tu papel en el diálogo.</div>`;const d=document.createElement("div");host.appendChild(d);stDlg(d,{mode:"role"});return;}
   if(LZ.talkDone){host.innerHTML=`<div class="blk c-green"><div class="t">Conversación hecha</div><div class="s">${LZ.talkDone.said} intervenciones · ${LZ.talkDone.used||0}/${st.targets.length} objetivos</div>${nextBtn()}</div>`;bindNext(host,{ok:LZ.talkDone.used||0,n:st.targets.length});return;}
   host.innerHTML=`<div class="blk c-${U.c}"><div class="t">${esc(U.sit)}</div><div class="s">Sos: ${esc(U.me)}. Usá estas frases: se ponen en verde cuando las decís. Después de 6 intervenciones podés seguir.</div>
@@ -252,6 +260,7 @@ function stSpeed(host){const U=UNITS[LZ.u];const items=shuffle(U.speed);let k=0,
 function stStory(host,st){const U=UNITS[LZ.u];host.innerHTML=`<div class="blk c-salmon"><div class="t">Historia loca</div><div class="s">Claude escribe una escena absurda en Varapodio con tus frases de la semana. Lo que te hace reír se recuerda mejor.</div>
   <button class="go" id="syGo"><span>Abrir la historia</span><span class="play">${ICON_PLAY}</span></button></div>${LZ.storyOpened?nextBtn("Ya la leí: seguir"):`<button class="pill ghost" data-next>Saltar</button>`}`;
   $("#syGo").onclick=()=>{LZ.storyOpened=1;openStory(st.words.map(c=>({it:c.it,es:c.es})),U.t);};bindNext(host);}
+
 /* step: pronunciation focus of the week */
 function stPron(host){const U=UNITS[LZ.u];const P=PRON.find(p=>p.id===U.pron)||PRON[0];
   const items=shuffle(P.quiz).slice(0,4).map(q=>({k:"choice",say:q[0],prompt:`<div class="exq" style="font-size:22px">Escuchá y elegí</div>`,opts:q[1],a:q[2],full:q[0],why:""}));

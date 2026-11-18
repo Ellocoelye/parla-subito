@@ -30,7 +30,7 @@ const { chromium, devices } = require('playwright');
       if (await p.$('#lezBody [data-l]')) { for (let i = 0; i < 4; i++) { await t(`#lezBody [data-l="${i}"]`, 30); await t(`#lezBody [data-r="${i}"]`, 30); } await t('#exFb [data-next]', 60); continue; }
       break; }
     return k; };
-  await p.goto(url + '#home'); await p.waitForTimeout(700);
+  await p.goto(url + '#home'); await p.waitForTimeout(700); await p.evaluate(() => { S.aiMode = 'full'; save(); });
   await step('home: placement CTA', async () => { await p.waitForSelector('#plStart'); });
   await p.screenshot({ path: 'check/p_home0.png' });
   await step('placement test → start unit', async () => { await t('#plStart', 300); await t('#plGo', 200); const k = await solve(30); const st = await p.evaluate(() => JSON.stringify({ u: S.route.u, placed: S.route.placed, lvl: S.level })); console.log('   answered', k, st); await t('#lezBody [data-next]', 300); await p.waitForSelector('#prog [data-sess]'); });
@@ -56,6 +56,7 @@ const { chromium, devices } = require('playwright');
     await t('#fsNight', 300);
     for (let guard = 0; guard < 40; guard++) {
       if (await p.$('#lezBody [data-nav="home"]')) break;
+      if (await p.$('#tmF')) { await t('#tmF', 200); continue; }
       if (await p.$('#tkGo')) { await t('#tkGo', 500); for (let i = 0; i < 6; i++) { await p.fill('#chatIn', 'Piacere, sono Lauti ' + i); await t('#sendBtn', 450); } await p.waitForSelector('#msgs [data-go]'); await t('#msgs [data-go]', 400); continue; }
       if (await p.$('#sdGo')) { await t('#sdGo', 100); for (let i = 0; i < 8; i++) { if (!await p.$('#sdNext')) break; await t('#sdNext', 40); } continue; }
       const k = await solve(40); if (k) continue;
