@@ -1,0 +1,61 @@
+const { chromium, devices } = require('playwright');
+(async () => {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...devices['iPhone 13'] });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', e => errs.push('pageerror: ' + e.message));
+  p.on('console', m => { if (m.type()==='error' && !/Failed to load resource/.test(m.text())) errs.push('console: '+m.text()); });
+  await p.addInitScript(() => {
+    window.__long = []; try { new PerformanceObserver(l => l.getEntries().forEach(e => window.__long.push(Math.round(e.duration)))).observe({ entryTypes: ['longtask'] }); } catch (e) {}
+    const delay = ms => new Promise(r => setTimeout(r, ms)); let n = 0;
+    const s = async (inp, o) => { await delay(500); o && o.onText && o.onText({ text: 'Ci = allá.', delta: 'Ci = allá.' }); return { text: 'Ci = allá.' }; };
+    s.json = async (inp, o) => { await delay(700); if (o && o.signal && o.signal.aborted) throw { code: 'cancelled' };
+      if (Array.isArray(inp)) { n++; return { correction: { ok: n % 2 === 0, better_it: 'Vorrei la residenza.', better_es: 'Quisiera la residencia.', why_es: 'Usá vorrei.' }, reply_it: 'Certo. Ha il passaporto?', reply_es: 'Claro. ¿Tiene el pasaporte?', hint: { idea_es: 'Dale el pasaporte', starter_it: 'Sì, ecco', full_it: 'Sì, ecco il passaporto.', full_es: 'Sí, acá está.' }, words: [{ it: 'passaporto', es: 'pasaporte' }], end: n >= 7 }; }
+      if (/pick 4-6/.test(inp)) return { praise_es: '¡Bien!', focus_es: 'artículos', cards: [{ it: 'Ecco il passaporto', es: 'Acá está el pasaporte', tip: 'ecco' }] };
+      if (/Translate for/.test(inp)) return { it: 'la chiave', es: 'la llave', pron: 'KIA-ve', note: '', ex_it: 'Ecco la chiave.', ex_es: 'Acá está la llave.' };
+      if (/Invent a new/.test(inp)) return { t: 'Gimnasio', s: 'Anotarte', role: 'gym receptionist', open: 'Greet him.' };
+      if (/List 12/.test(inp)) return { words: [{ it: 'il burro', es: 'la manteca' }] };
+      if (/placement/.test(inp)) return { q: ['A1','A1','A1','A2','A2','A2','B1','B1','B1','B2','B2','B2'].map((l,i) => ({ lvl: l, q: 'q' + i, o: ['a','b','c','d'], a: i < 6 ? 0 : 3, why: 'x' })) };
+      if (/8-question/.test(inp)) return { q: [1,2,3].map(i => ({ q: 'P' + i, o: ['a','b','c','d'], a: 1, why: 'x', save: { it: 'ciao', es: 'hola' } })) };
+      if (/example sentences/.test(inp)) return { cards: [{ it: 'Sono stanco', es: 'Estoy cansado', tip: 'essere' }] };
+      if (/keyword mnemonic/.test(inp)) return { hook: 'Chiave suena a "llave"…' };
+      return {}; };
+    window.claude = { use: async name => name === 'sample' ? s : null };
+  });
+  const url = 'file:///home/claude/italiano/index.html';
+  const t = async (sel, wait = 120) => { await p.tap(sel); await p.waitForTimeout(wait); };
+  const step = async (name, fn) => { try { await fn(); console.log('OK  ', name); } catch (e) { console.log('FAIL', name, '-', e.message.split('\n')[0]); errs.push(name); } };
+
+  await p.goto(url + '#home'); await p.waitForTimeout(900);
+  await step('home renders', async () => { await p.waitForSelector('#lvlCard svg'); });
+  await step('level sheet', async () => { await t('#lvlCard'); await t('#lvNo'); });
+  await step('settings', async () => { await t('#openSettings'); await t('#sTest'); await t('#sClose'); });
+  await step('mission buttons', async () => { await t('#mDone'); await t('#mSkip'); });
+  await step('chat anagrafe: opener instant', async () => { await p.goto(url + '#parla'); await p.waitForTimeout(400); const t0 = Date.now(); await p.tap('#parlaHome [data-s="anag"]'); await p.waitForSelector('.bub.tu'); if (Date.now() - t0 > 600) throw new Error('slow open ' + (Date.now() - t0)); });
+  await step('help sheet opens fast', async () => { const t0 = Date.now(); await p.tap('#helpBtn'); await p.waitForSelector('#helpBody .cap'); const d = Date.now() - t0; if (d > 500) throw new Error('slow help ' + d); });
+  await step('help: más ayuda x2 + usarla', async () => { await t('#helpBody [data-more]'); await t('#helpBody [data-more]'); await t('#helpBody [data-use]'); if (await p.isVisible('#modal.on')) throw new Error('sheet still open'); const v = await p.inputValue('#chatIn'); if (!v) throw new Error('not filled'); });
+  await step('send reply', async () => { await t('#sendBtn', 1000); if (await p.locator('.bub.tu').count() < 2) throw new Error('no reply'); });
+  await step('help: search word + save + use', async () => { await t('#helpBtn'); await t('#sheet [data-tab="search"]'); await p.fill('#helpBody input', 'llave'); await p.press('#helpBody input', 'Enter'); await p.waitForSelector('#helpBody .lk', { timeout: 3000 }); await t('#helpBody [data-a="save"]'); await t('#helpBody [data-a="use"]'); if (await p.isVisible('#modal.on')) throw new Error('sheet still open'); });
+  await step('help: close with X and backdrop', async () => { await t('#helpBtn'); await t('#helpX'); await t('#helpBtn'); await p.mouse.click(195, 20); await p.waitForTimeout(150); if (await p.isVisible('#modal.on')) throw new Error('backdrop did not close'); });
+  await step('tutor bubble tools', async () => { await t('.bub.tu [data-act="tr"]'); await t('.bub.tu [data-act="say"]'); await t('.bub.tu [data-act="word"]'); });
+  await step('6 turns then end + save cards', async () => { for (let i = 0; i < 6; i++) { await p.fill('#chatIn', 'Ecco il passaporto ' + i); await t('#sendBtn', 900); } await t('#chatEnd', 1200); await p.waitForSelector('#chatSummary [data-save]'); await t('#chatSummary [data-save]'); });
+  await step('back to scenes', async () => { await t('#chatSummary [data-again]'); await p.waitForSelector('#parlaHome [data-s]'); });
+  await step('ensayo sheet', async () => { await t('#ensayoBtn'); await p.fill('#ensIn', 'Voy a la tabaccheria'); await t('#ensGo', 300); await t('#chatBack'); });
+  await step('generate scene', async () => { await t('#genBtn'); await t('#genGo', 1000); await t('#chatBack'); });
+  await step('monologue', async () => { await t('#monoBtn'); await t('#mono .lesson'); await t('#monoGo', 1100); await t('#monoSkip'); await t('#monoBack'); await t('#monoBack'); });
+  await step('cards: reveal, grade x4, typing mode', async () => { await p.goto(url + '#carte'); await p.waitForTimeout(300); for (let i = 0; i < 4; i++) { await t('#fcShow'); await t('.grades [data-g="3"]', 350); } await t('#segAns [data-m="type"]'); await p.fill('#fcIn', 'ciao'); await t('#fcCheck'); await t('.grades [data-g="1"]', 350); await t('#segAns [data-m="voice"]'); });
+  await step('parole: search, theme, save, more', async () => { await p.goto(url + '#parole'); await p.waitForTimeout(300); await p.fill('#pSearch input', 'factura'); await p.press('#pSearch input', 'Enter'); await p.waitForSelector('#pSearch .lk'); await t('[data-v="1"]'); await t('[data-w="0"]'); await t('#vMore', 1000); await t('#vAll'); await t('#vBack'); await t('#playAll', 300); await t('#playAll'); });
+  await step('ascolta: 3 modes', async () => { await p.goto(url + '#ascolta'); await p.waitForTimeout(300); await t('#dlgList .lesson'); await t('#dlPlay', 600); await t('#dlPlay'); await t('#ascDlg .seg [data-m="shadow"]'); await t('#ascDlg .seg [data-m="role"]'); await t('#tIt'); await t('#lines .round'); await t('#dlBack'); });
+  await step('studio: lesson full run + cards', async () => { await p.goto(url + '#studio'); await p.waitForTimeout(300); await t('#gramPane .lesson >> nth=0'); await t('#glStart'); for (let i = 0; i < 7; i++) { await t('#studioRun .opts button'); await t('#glNext'); } await p.waitForSelector('#lessonCards [data-save]', { timeout: 3000 }); await t('#lessonCards [data-save]'); await t('#glBack'); });
+  await step('studio: ask doubt', async () => { await p.fill('#askIn', 'ci o ne?'); await t('#askGo', 900); });
+  await step('studio: quick quiz', async () => { await t('#segStudio [data-t="quiz"]'); await t('[data-q="local"]'); for (let i = 0; i < 10; i++) { await t('#studioRun .opts button'); await t('#qzNext'); } await t('#qzBack'); });
+  await step('studio: AI quiz + level test', async () => { await t('#segStudio [data-t="quiz"]'); await t('[data-q="ai"]', 1000); for (let i = 0; i < 3; i++) { await t('#studioRun .opts button'); await t('#qzNext'); } await t('#qzBack'); await t('#segStudio [data-t="quiz"]'); await t('[data-q="level"]', 1000); for (let i = 0; i < 12; i++) { await t('#studioRun .opts button'); await t('#qzNext'); } await t('#qzBack'); });
+  await step('dock navigation', async () => { for (const v of ['home','ruta','parla','carte','mas','home']) await t(`nav.dock a[data-v="${v}"]`, 250); });
+  const long = await p.evaluate(() => window.__long);
+  console.log('long tasks >50ms:', long.length, 'max', Math.max(0, ...long), 'ms');
+  console.log('horizontal overflow:', await p.evaluate(() => document.documentElement.scrollWidth > innerWidth));
+  console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
+  await p.screenshot({ path: 'check/m_end.png' });
+  await b.close();
+})();

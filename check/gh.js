@@ -1,0 +1,26 @@
+const { chromium, devices } = require('playwright');
+(async () => { const b = await chromium.launch(); const ctx = await b.newContext({ ...devices['iPhone 13'] }); const p = await ctx.newPage();
+ const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|fonts/.test(m.text())) errs.push(m.text()); });
+ let gem = 0, grq = 0, gemModels = [];
+ await p.route('https://generativelanguage.googleapis.com/**', async r => { gem++; const url = r.request().url(); gemModels.push(url.split('/models/')[1].split(':')[0]);
+   if (/gemini-flash-latest/.test(url)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":{"message":"not found"}}' });
+   if (gem === 5) return r.fulfill({ status: 429, contentType: 'application/json', body: '{"error":{"message":"quota"}}' });
+   const body = JSON.parse(r.request().postData()); const last = body.contents[body.contents.length - 1].parts[0].text;
+   const out = /ok":true/.test(last) ? { ok: true } : { correction: null, reply_it: 'Ciao! Come stai?', reply_es: '¡Hola!', hint: {}, words: [], used_targets: [], end: false };
+   r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] }) }); });
+ await p.route('https://api.groq.com/**', async r => { grq++; r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ correction: { ok: true, better_it: 'x', better_es: 'x', why_es: 'x' }, reply_it: 'Da Groq!', reply_es: 'x', hint: {}, words: [], end: false }) } }] }) }); });
+ const url = 'file:///home/claude/italiano/gh/index.html';
+ await p.goto(url + '#home'); await p.waitForTimeout(700);
+ const step = async (n, f) => { try { await f(); console.log('OK  ', n); } catch (e) { console.log('FAIL', n, e.message.split('\n')[0]); errs.push(n); } };
+ await step('no key → message', async () => { const v = await p.evaluate(() => sample === null); if (!v) throw new Error('sample set'); });
+ await step('settings: save + test keys', async () => { await p.tap('#openSettings'); await p.waitForSelector('#kG'); await p.fill('#kG', 'AIzaTEST123456'); await p.fill('#kQ', 'gsk_TEST7890'); await p.tap('#kTest'); await p.waitForTimeout(800); const m = await p.textContent('#kMsg'); console.log('   ', m); if (!/Gemini ✓/.test(m) || !/Groq ✓/.test(m)) throw new Error(m); await p.tap('#kSave'); await p.waitForTimeout(1500); });
+ await step('sample available after reload', async () => { const v = await p.evaluate(() => !!sample); if (!v) throw new Error('no sample'); });
+ await step('chat through Gemini, 429 → Groq fallback', async () => { await p.goto(url + '#parla'); await p.waitForTimeout(500); await p.evaluate(() => openChat({ id: 'x', t: 'Test', role: 'friend', open: 'Greet him.' })); await p.waitForTimeout(1200);
+   for (let i = 0; i < 3; i++) { await p.fill('#chatIn', 'Ciao ' + i); await p.tap('#sendBtn'); await p.waitForTimeout(900); }
+   const tx = await p.textContent('#msgs'); console.log('    gem', gem, 'groq', grq, gemModels.slice(0, 4).join(','));
+   if (!/Da Groq!/.test(tx)) throw new Error('no groq fallback'); if (!/Come stai/.test(tx)) throw new Error('no gemini'); });
+ await step('copy/paste progress import', async () => { await p.goto(url + '#home'); await p.waitForTimeout(400); const before = await p.evaluate(() => S.said || 0);
+   await p.tap('#openSettings'); await p.tap('#sImport'); await p.fill('#imTa', JSON.stringify({ cards: { cx: { st: 'rev', due: 1, reps: 3, last: 1, s: 5, d: 5, lapses: 0, step: 0 } }, custom: { cx: { it: 'Prova', es: 'Prueba', g: 'conv' } }, said: 76, route: { placed: 1, u: 5, d: 2, s: 'm', done: { u6d1m: 1 } } })); await p.tap('#imGo'); await p.waitForTimeout(500);
+   const r = await p.evaluate(() => JSON.stringify({ said: S.said, u: S.route.u, d: S.route.d, c: !!DECK_BY.cx })); console.log('   ', r); if (!/"u":5/.test(r) || !/"c":true/.test(r)) throw new Error(r); });
+ await step('persists after reload (local)', async () => { await p.reload(); await p.waitForTimeout(700); const u = await p.evaluate(() => S.route.u); if (u !== 5) throw new Error('u=' + u); });
+ console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors'); await b.close(); })();
