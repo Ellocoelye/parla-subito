@@ -55,8 +55,12 @@
           contents: turns.map(t => ({ role: t.role === "assistant" ? "model" : "user", parts: [{ text: t.content }] })),
           generationConfig: Object.assign({ temperature: 0.8 }, json ? { responseMimeType: "application/json" } : {})
         };
-        const r = await fetchJSON(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": k }, body: JSON.stringify(body) }, signal);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const init = h => ({ method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, h), body: JSON.stringify(body) });
+        let r;
+        /* New "AQ." auth keys and classic "AIza" keys: header first, then ?key= if the header form is refused. */
+        try { r = await fetchJSON(url, init({ "x-goog-api-key": k }), signal); }
+        catch (e) { if (e.code !== "bad_key") throw e; r = await fetchJSON(url + "?key=" + encodeURIComponent(k), init({}), signal); }
         const text = (((r.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || "").join("") || "";
         if (!text) throw err("upstream_error", "empty");
         LS.set("ps.gm." + kind, model);
@@ -166,7 +170,7 @@
         <b>Motor de IA</b>
         <span class="small muted">Gratis: Gemini (principal) y Groq (respaldo automático). Las claves quedan solo en este teléfono.</span>
         <label class="small" for="kG">Clave de Gemini · aistudio.google.com → Get API key ${k.g ? `<span style="color:var(--green)">✓ ${esc(mask(k.g))}</span>` : ""}</label>
-        <input id="kG" class="field" type="password" autocomplete="off" placeholder="${k.g ? "Guardada (pegá otra para cambiarla)" : "Pegá tu clave AIza…"}">
+        <input id="kG" class="field" type="password" autocomplete="off" placeholder="${k.g ? "Guardada (pegá otra para cambiarla)" : "Pegá tu clave (AQ.… o AIza…)"}">
         <label class="small" for="kQ">Clave de Groq · console.groq.com → API Keys ${k.q ? `<span style="color:var(--green)">✓ ${esc(mask(k.q))}</span>` : ""}</label>
         <input id="kQ" class="field" type="password" autocomplete="off" placeholder="${k.q ? "Guardada (pegá otra para cambiarla)" : "Pegá tu clave gsk_…"}">
         <div class="row"><button class="pill solid" id="kSave">Guardar claves</button><button class="pill" id="kTest">Probar</button>${k.g || k.q ? `<button class="pill ghost" id="kDel" style="color:var(--coral)">Borrar claves</button>` : ""}</div>
